@@ -1,0 +1,88 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+    id 'application'
+}
+
+sourceCompatibility = '21'
+targetCompatibility = '21'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // AWS Lambda
+    implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
+    implementation 'com.amazonaws:aws-lambda-java-events:3.11.3'
+    
+    // AWS SDK
+    implementation 'com.amazonaws:aws-java-sdk-sqs:1.12.565'
+    implementation 'com.amazonaws:aws-java-sdk-rds:1.12.565'
+    
+    // Jackson for JSON
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.15.2'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.15.2'
+    
+    // Database
+    implementation 'org.postgresql:postgresql:42.6.0'
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+    
+    // Logging
+    implementation 'org.slf4j:slf4j-api:2.0.7'
+    implementation 'org.slf4j:slf4j-simple:2.0.7'
+    
+    // Utilities
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'commons-codec:commons-codec:1.16.0'
+    
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.4.0'
+}
+
+// Default Shadow JAR (not strictly needed for Lambda, but kept)
+shadowJar {
+    archiveBaseName = 'webhook-lambda'
+    archiveClassifier = ''
+    archiveVersion = ''
+    mainClassName = ''
+}
+
+// Create separate JARs for each Lambda function
+tasks.register('publisherJar', com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
+    archiveBaseName.set('webhook-publisher')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    from sourceSets.main.output
+    configurations = [project.configurations.runtimeClasspath]
+
+    manifest {
+        attributes 'Main-Class': 'com.payintelli.webhook.handlers.WebhookPublisherLambda'
+    }
+}
+
+tasks.register('deliveryJar', com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar) {
+    archiveBaseName.set('webhook-delivery')
+    archiveClassifier.set('')
+    archiveVersion.set('')
+    from sourceSets.main.output
+    configurations = [project.configurations.runtimeClasspath]
+
+    manifest {
+        attributes 'Main-Class': 'com.payintelli.webhook.handlers.WebhookDeliveryLambda'
+    }
+}
+
+
+// Ensure both custom jars are built during `gradle build`
+build.dependsOn(tasks.named('publisherJar'), tasks.named('deliveryJar'))
+
+// Test configuration
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"
+    }
+}

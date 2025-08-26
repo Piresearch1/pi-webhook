@@ -1,0 +1,67 @@
+# Ignore Gradle project-specific cache directory
+.gradle
+
+# Ignore Gradle build output directory
+build
+# ----------------------
+# Java / JVM
+# ----------------------
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.iml
+
+# ----------------------
+# Gradle
+# ----------------------
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+gradle-app.setting
+
+# ----------------------
+# IDE / Editor
+# ----------------------
+# STS / Eclipse
+.settings/
+.project
+.classpath
+.springBeans
+
+# IntelliJ IDEA
+.idea/
+*.iws
+*.ipr
+*.iml
+out/
+
+# VS Code
+.vscode/
+
+# ----------------------
+# Lambda / deployment
+# ----------------------
+*.zip
+*.jar
+*.class
+
+# ----------------------
+# Logs
+# ----------------------
+*.log
+
+# ----------------------
+# OS Files
+# ----------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------
+# Temporary / environment
+# ----------------------
+*.tmp
+*.bak
+*.swp
+.env

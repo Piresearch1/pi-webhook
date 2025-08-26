@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Webhook Lambda System Infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: ['dev', 'staging', 'prod']
+  
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'VPC ID for Lambda functions'
+  
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'Subnet IDs for Lambda functions'
+  
+  DatabaseUrl:
+    Type: String
+    Description: 'PostgreSQL connection URL'
+    NoEcho: true
+
+  Region:
+    Type: String
+    Description: 'AWS region'
+    NoEcho: true
+
+  DatabaseUsername:
+    Type: String
+    Description: 'PostgreSQL connection username'
+    NoEcho: true
+
+  DatabasePassword:
+    Type: String
+    Description: 'PostgreSQL connection password'
+    NoEcho: true
+
+  ArtifactVersion:
+    Type: String
+    Description: 'Version identifier for Lambda artifacts (e.g., timestamp or git hash)'
+
+Resources:
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+     GroupDescription: !Sub "Security group for webhook Lambdas in ${Environment}"
+     VpcId: !Ref VpcId
+     SecurityGroupEgress:
+      - IpProtocol: -1
+        CidrIp: 0.0.0.0/0
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "pi-checkout-${Environment}-role-${AWS::Region}-lambdaexecutionrole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: LambdaSQSPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:SendMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt WebhookQueue.Arn
+
+
+  # SQS Queue
+  WebhookQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${Region}-webhookqueue'
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt WebhookDLQ.Arn
+        maxReceiveCount: 3
+
+  # Dead Letter Queue
+  WebhookDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${Region}-webhookdlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # Publisher Lambda Function
+  PublisherLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'pi-checkout-${Environment}-lmd-${Region}-webhookpublisher'
+      Runtime: java21
+      Handler: com.payintelli.webhook.handlers.WebhookPublisherLambda::handleRequest
+      Code:
+        S3Bucket: !Sub 'pi-checkout-${Environment}-s3-${Region}-webhook'
+        S3Key: !Sub '${ArtifactVersion}/webhook-publisher.jar'
+      MemorySize: 512
+      Timeout: 60
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref SubnetIds
+      Environment: 
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          DATABASE_USERNAME: !Ref DatabaseUsername
+          DATABASE_PASSWORD: !Ref DatabasePassword
+          SQS_QUEUE_URL: !Ref WebhookQueue
+
+  # Delivery Lambda Function  
+  DeliveryLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'pi-checkout-${Environment}-lmd-${Region}-webhookdelivery'
+      Runtime: java21
+      Handler: com.payintelli.webhook.handlers.WebhookDeliveryLambda::handleRequest
+      Code:
+        S3Bucket: !Sub 'pi-checkout-${Environment}-s3-${Region}-webhook'
+        S3Key: !Sub '${ArtifactVersion}/webhook-delivery.jar'
+      MemorySize: 1024
+      Timeout: 120
+      Role: !GetAtt LambdaExecutionRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          DATABASE_USERNAME: !Ref DatabaseUsername
+          DATABASE_PASSWORD: !Ref DatabasePassword
+          SQS_QUEUE_URL: !Ref WebhookQueue
+          MAX_ATTEMPTS: '5'
+
+  # SQS Event Source Mapping
+  SQSEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt WebhookQueue.Arn
+      FunctionName: !Ref DeliveryLambda
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 5
