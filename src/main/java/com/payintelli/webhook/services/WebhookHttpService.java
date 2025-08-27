@@ -24,7 +24,7 @@ public class WebhookHttpService {
             .uri(URI.create(endpoint.getUrl()))
             .timeout(Duration.ofSeconds(30))
             .header("Content-Type", "application/json")
-            .header("User-Agent", "Webhook-Delivery/1.0")
+            .header("User-Agent", "Payintelli Webhook-Delivery/1.0")
             .header("X-Webhook-Event", message.getEventType())
             .header("X-Webhook-Attempt", String.valueOf(message.getAttemptCount()))
             .POST(HttpRequest.BodyPublishers.ofString(message.getPayload()));

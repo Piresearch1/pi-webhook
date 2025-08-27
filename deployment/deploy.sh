@@ -86,21 +86,67 @@ aws s3 cp build/libs/webhook-delivery.jar s3://pi-checkout-$ENVIRONMENT-s3-$AWS_
 if [ "$UPDATE_CODE_ONLY" == "true" ]; then
   echo "🔄 Updating Lambda function code only..."
 
+  # --- Publisher Lambda ---
+  echo "📦 Updating Publisher Lambda code..."
   aws lambda update-function-code \
     --region $AWS_REGION \
     --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookpublisher \
     --s3-bucket pi-checkout-$ENVIRONMENT-s3-$AWS_REGION-webhook \
     --s3-key $VERSION/webhook-publisher.jar
 
+  echo "⏳ Waiting for Publisher Lambda update to complete..."
+  aws lambda wait function-updated \
+    --region $AWS_REGION \
+    --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookpublisher
+
+  echo "🚀 Publishing new version for Publisher Lambda..."
+  PUBLISHER_VERSION=$(aws lambda publish-version \
+    --region $AWS_REGION \
+    --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookpublisher \
+    --query 'Version' \
+    --output text)
+
+  echo "🔗 Updating alias 'live' for Publisher Lambda -> Version $PUBLISHER_VERSION"
+  aws lambda update-alias \
+    --region $AWS_REGION \
+    --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookpublisher \
+    --name live \
+    --function-version $PUBLISHER_VERSION
+
+
+  # --- Delivery Lambda ---
+  echo "📦 Updating Delivery Lambda code..."
   aws lambda update-function-code \
     --region $AWS_REGION \
     --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookdelivery \
     --s3-bucket pi-checkout-$ENVIRONMENT-s3-$AWS_REGION-webhook \
     --s3-key $VERSION/webhook-delivery.jar
 
-  echo "✅ Lambda code updated successfully!"
+  echo "⏳ Waiting for Delivery Lambda update to complete..."
+  aws lambda wait function-updated \
+    --region $AWS_REGION \
+    --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookdelivery
+
+  echo "🚀 Publishing new version for Delivery Lambda..."
+  DELIVERY_VERSION=$(aws lambda publish-version \
+    --region $AWS_REGION \
+    --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookdelivery \
+    --query 'Version' \
+    --output text)
+
+  echo "🔗 Updating alias 'live' for Delivery Lambda -> Version $DELIVERY_VERSION"
+  aws lambda update-alias \
+    --region $AWS_REGION \
+    --function-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhookdelivery \
+    --name live \
+    --function-version $DELIVERY_VERSION
+
+
+  echo "✅ Lambda code + alias updates completed successfully!"
   exit 0
 fi
+
+
 
 # --- Deploy CloudFormation stack ---
 echo "📦 Deploying CloudFormation stack..."

@@ -73,7 +73,7 @@ Resources:
                  - !GetAtt PublishWebhookQueue.Arn
                  - !GetAtt DeliveryWebhookQueue.Arn
 
- # Dead Letter Queue
+  # Dead Letter Queue
   PublishWebhookDLQ:
     Type: AWS::SQS::Queue
     Properties:
@@ -90,14 +90,13 @@ Resources:
         deadLetterTargetArn: !GetAtt PublishWebhookDLQ.Arn
         maxReceiveCount: 3
 
-# Dead Letter Queue
+  # Dead Letter Queue
   DeliveryWebhookDLQ:
     Type: AWS::SQS::Queue
     Properties:
       QueueName: !Sub 'pi-checkout-${Environment}-sqs-${AWS::Region}-delivery-webhook-dlq'
       MessageRetentionPeriod: 1209600  # 14 days
 
-  # SQS Queue
   DeliveryWebhookQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -131,6 +130,8 @@ Resources:
           DATABASE_USERNAME: !Ref DatabaseUsername
           DATABASE_PASSWORD: !Ref DatabasePassword
           SQS_QUEUE_URL: !Ref DeliveryWebhookQueue
+      SnapStart:
+        ApplyOn: PublishedVersions
 
   # Delivery Lambda Function  
   DeliveryLambda:
@@ -156,13 +157,15 @@ Resources:
           DATABASE_PASSWORD: !Ref DatabasePassword
           SQS_QUEUE_URL: !Ref DeliveryWebhookQueue
           MAX_ATTEMPTS: '5'
+      SnapStart:
+        ApplyOn: PublishedVersions
 
   # SQS Event Source Mapping
   DeliverySQSEventSource:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       EventSourceArn: !GetAtt DeliveryWebhookQueue.Arn
-      FunctionName: !Ref DeliveryLambda
+      FunctionName: !Ref DeliveryLambdaAlias
       BatchSize: 10
       MaximumBatchingWindowInSeconds: 5
 
@@ -170,6 +173,33 @@ Resources:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       EventSourceArn: !GetAtt PublishWebhookQueue.Arn
-      FunctionName: !Ref PublisherLambda
+      FunctionName: !Ref PublisherLambdaAlias
       BatchSize: 10
       MaximumBatchingWindowInSeconds: 5
+
+  # --- Versions & Aliases for SnapStart ---
+  PublisherLambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref PublisherLambda
+      Description: !Sub "Publisher Lambda version for ${ArtifactVersion}"
+
+  PublisherLambdaAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref PublisherLambda
+      FunctionVersion: !GetAtt PublisherLambdaVersion.Version
+      Name: live
+
+  DeliveryLambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref DeliveryLambda
+      Description: !Sub "Delivery Lambda version for ${ArtifactVersion}"
+
+  DeliveryLambdaAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref DeliveryLambda
+      FunctionVersion: !GetAtt DeliveryLambdaVersion.Version
+      Name: live
