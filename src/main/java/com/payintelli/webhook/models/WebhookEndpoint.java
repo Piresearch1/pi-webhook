@@ -35,7 +35,14 @@ public class WebhookEndpoint {
     public String getUrl() { return url; }
     public void setUrl(String url) { this.url = url; }
     
-    public String getEvents() { return events; }
+    @Override
+	public String toString() {
+		return "WebhookEndpoint [id=" + id + ", clientId=" + clientId + ", url=" + url + ", events=" + events
+				+ ", secret=" + secret + ", isActive=" + isActive + ", createdAt=" + createdAt + ", updatedAt="
+				+ updatedAt + ", createdBy=" + createdBy + ", notes=" + notes + "]";
+	}
+
+	public String getEvents() { return events; }
     public void setEvents(String events) { this.events = events; }
     
     public String getSecret() { return secret; }

@@ -32,4 +32,10 @@ public class WebhookMessage {
     
     public Integer getAttemptCount() { return attemptCount; }
     public void setAttemptCount(Integer attemptCount) { this.attemptCount = attemptCount; }
+
+	@Override
+	public String toString() {
+		return "WebhookMessage [deliveryId=" + deliveryId + ", webhookEndpointId=" + webhookEndpointId + ", eventType="
+				+ eventType + ", payload=" + payload + ", attemptCount=" + attemptCount + "]";
+	}
 }
