@@ -20,11 +20,6 @@ Parameters:
     Description: 'PostgreSQL connection URL'
     NoEcho: true
 
-  Region:
-    Type: String
-    Description: 'AWS region'
-    NoEcho: true
-
   DatabaseUsername:
     Type: String
     Description: 'PostgreSQL connection username'
@@ -74,36 +69,54 @@ Resources:
                   - sqs:DeleteMessage
                   - sqs:SendMessage
                   - sqs:GetQueueAttributes
-                Resource: !GetAtt WebhookQueue.Arn
+                Resource:
+                 - !GetAtt PublishWebhookQueue.Arn
+                 - !GetAtt DeliveryWebhookQueue.Arn
 
-
-  # SQS Queue
-  WebhookQueue:
+ # Dead Letter Queue
+  PublishWebhookDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${Region}-webhookqueue'
+      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${AWS::Region}-publish-webhook-dlq'
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  PublishWebhookQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${AWS::Region}-publish-webhook-queue'
       VisibilityTimeout: 120
       MessageRetentionPeriod: 1209600  # 14 days
       RedrivePolicy:
-        deadLetterTargetArn: !GetAtt WebhookDLQ.Arn
+        deadLetterTargetArn: !GetAtt PublishWebhookDLQ.Arn
         maxReceiveCount: 3
 
-  # Dead Letter Queue
-  WebhookDLQ:
+# Dead Letter Queue
+  DeliveryWebhookDLQ:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${Region}-webhookdlq'
+      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${AWS::Region}-delivery-webhook-dlq'
       MessageRetentionPeriod: 1209600  # 14 days
+
+  # SQS Queue
+  DeliveryWebhookQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'pi-checkout-${Environment}-sqs-${AWS::Region}-delivery-webhook-queue'
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeliveryWebhookDLQ.Arn
+        maxReceiveCount: 3
 
   # Publisher Lambda Function
   PublisherLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'pi-checkout-${Environment}-lmd-${Region}-webhookpublisher'
+      FunctionName: !Sub 'pi-checkout-${Environment}-lmd-${AWS::Region}-webhookpublisher'
       Runtime: java21
       Handler: com.payintelli.webhook.handlers.WebhookPublisherLambda::handleRequest
       Code:
-        S3Bucket: !Sub 'pi-checkout-${Environment}-s3-${Region}-webhook'
+        S3Bucket: !Sub 'pi-checkout-${Environment}-s3-${AWS::Region}-webhook'
         S3Key: !Sub '${ArtifactVersion}/webhook-publisher.jar'
       MemorySize: 512
       Timeout: 60
@@ -117,17 +130,17 @@ Resources:
           DATABASE_URL: !Ref DatabaseUrl
           DATABASE_USERNAME: !Ref DatabaseUsername
           DATABASE_PASSWORD: !Ref DatabasePassword
-          SQS_QUEUE_URL: !Ref WebhookQueue
+          SQS_QUEUE_URL: !Ref DeliveryWebhookQueue
 
   # Delivery Lambda Function  
   DeliveryLambda:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub 'pi-checkout-${Environment}-lmd-${Region}-webhookdelivery'
+      FunctionName: !Sub 'pi-checkout-${Environment}-lmd-${AWS::Region}-webhookdelivery'
       Runtime: java21
       Handler: com.payintelli.webhook.handlers.WebhookDeliveryLambda::handleRequest
       Code:
-        S3Bucket: !Sub 'pi-checkout-${Environment}-s3-${Region}-webhook'
+        S3Bucket: !Sub 'pi-checkout-${Environment}-s3-${AWS::Region}-webhook'
         S3Key: !Sub '${ArtifactVersion}/webhook-delivery.jar'
       MemorySize: 1024
       Timeout: 120
@@ -141,14 +154,22 @@ Resources:
           DATABASE_URL: !Ref DatabaseUrl
           DATABASE_USERNAME: !Ref DatabaseUsername
           DATABASE_PASSWORD: !Ref DatabasePassword
-          SQS_QUEUE_URL: !Ref WebhookQueue
+          SQS_QUEUE_URL: !Ref DeliveryWebhookQueue
           MAX_ATTEMPTS: '5'
 
   # SQS Event Source Mapping
-  SQSEventSource:
+  DeliverySQSEventSource:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
-      EventSourceArn: !GetAtt WebhookQueue.Arn
+      EventSourceArn: !GetAtt DeliveryWebhookQueue.Arn
       FunctionName: !Ref DeliveryLambda
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 5
+
+  PublishSQSEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt PublishWebhookQueue.Arn
+      FunctionName: !Ref PublisherLambda
       BatchSize: 10
       MaximumBatchingWindowInSeconds: 5

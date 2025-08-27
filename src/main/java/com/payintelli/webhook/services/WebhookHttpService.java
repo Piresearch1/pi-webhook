@@ -1,7 +1,7 @@
 package com.payintelli.webhook.services;
 
 import com.payintelli.webhook.models.WebhookEndpoint;
-import com.payintelli.webhook.models.WebhookMessage;
+import com.payintelli.webhook.models.WebhookDeliveryMessage;
 import com.payintelli.webhook.utils.WebhookSignatureUtils;
 
 import java.net.URI;
@@ -19,7 +19,7 @@ public class WebhookHttpService {
             .build();
     }
     
-    public HttpResponse<String> sendWebhook(WebhookEndpoint endpoint, WebhookMessage message) throws Exception {
+    public HttpResponse<String> sendWebhook(WebhookEndpoint endpoint, WebhookDeliveryMessage message) throws Exception {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
             .uri(URI.create(endpoint.getUrl()))
             .timeout(Duration.ofSeconds(30))

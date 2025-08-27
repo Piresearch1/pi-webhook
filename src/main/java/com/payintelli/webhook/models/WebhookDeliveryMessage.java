@@ -1,15 +1,15 @@
 package com.payintelli.webhook.models;
 
-public class WebhookMessage {
+public class WebhookDeliveryMessage {
     private Long deliveryId;
     private Long  webhookEndpointId;
     private String eventType;
     private String payload;
     private Integer attemptCount;
     
-    public WebhookMessage() {}
+    public WebhookDeliveryMessage() {}
     
-    public WebhookMessage(Long deliveryId, Long  webhookEndpointId, String eventType, String payload, Integer attemptCount) {
+    public WebhookDeliveryMessage(Long deliveryId, Long  webhookEndpointId, String eventType, String payload, Integer attemptCount) {
         this.deliveryId = deliveryId;
         this.webhookEndpointId = webhookEndpointId;
         this.eventType = eventType;

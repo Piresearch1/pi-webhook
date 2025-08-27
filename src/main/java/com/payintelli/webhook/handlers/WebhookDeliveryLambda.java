@@ -12,7 +12,7 @@ import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.payintelli.webhook.models.WebhookEndpoint;
-import com.payintelli.webhook.models.WebhookMessage;
+import com.payintelli.webhook.models.WebhookDeliveryMessage;
 import com.payintelli.webhook.services.WebhookDatabaseService;
 import com.payintelli.webhook.services.WebhookHttpService;
 import com.payintelli.webhook.utils.RetryUtils;
@@ -48,11 +48,11 @@ public class WebhookDeliveryLambda implements RequestHandler<SQSEvent, String> {
 	}
 
 	private void processWebhookMessage(SQSEvent.SQSMessage sqsMessage, Context context) throws Exception {
-		WebhookMessage message = objectMapper.readValue(sqsMessage.getBody(), WebhookMessage.class);
+		WebhookDeliveryMessage message = objectMapper.readValue(sqsMessage.getBody(), WebhookDeliveryMessage.class);
 		try {
-
 			WebhookEndpoint endpoint = dbService.findEndpointById(message.getWebhookEndpointId());
 			context.getLogger().log("WebhookEndpoint::" + endpoint);
+			context.getLogger().log("WebhookDeliveryMessage::" + message);
 			if (endpoint == null || !endpoint.getIsActive()) {
 				context.getLogger().log("Endpoint not found or inactive: " + message.getWebhookEndpointId());
 
@@ -104,7 +104,7 @@ public class WebhookDeliveryLambda implements RequestHandler<SQSEvent, String> {
 		}
 	}
 
-	private void scheduleRetry(WebhookMessage message, Context context) throws Exception {
+	private void scheduleRetry(WebhookDeliveryMessage message, Context context) throws Exception {
 		if (message.getAttemptCount() >= maxAttempts) {
 
 			dbService.updateDelivery(message.getDeliveryId(), null, null, "ABANDONED", null, message.getAttemptCount(),
@@ -121,7 +121,7 @@ public class WebhookDeliveryLambda implements RequestHandler<SQSEvent, String> {
 		dbService.updateDelivery(message.getDeliveryId(), null, null, "PENDING", nextRetryAt,
 				message.getAttemptCount(),null, null, null);
 
-		WebhookMessage retryMessage = new WebhookMessage(message.getDeliveryId(), message.getWebhookEndpointId(),
+		WebhookDeliveryMessage retryMessage = new WebhookDeliveryMessage(message.getDeliveryId(), message.getWebhookEndpointId(),
 				message.getEventType(), message.getPayload(), message.getAttemptCount() + 1);
 
 		SendMessageRequest retryRequest = new SendMessageRequest().withQueueUrl(queueUrl)

@@ -106,7 +106,7 @@ fi
 echo "📦 Deploying CloudFormation stack..."
 aws cloudformation deploy \
   --template-file deployment/cloudformation-template.yaml \
-  --stack-name pi-checkout-$ENVIRONMENT-lmd-$AWS_REGION-webhook \
+  --stack-name pi-checkout-$ENVIRONMENT-stk-$AWS_REGION-webhook \
   --parameter-overrides \
     Environment=$ENVIRONMENT \
     VpcId=$VPC_ID \
@@ -115,7 +115,6 @@ aws cloudformation deploy \
     DatabaseUsername=$DATABASE_USERNAME \
     DatabasePassword=$DATABASE_PASSWORD \
     ArtifactVersion=$VERSION \
-    Region=$AWS_REGION \
   --capabilities CAPABILITY_NAMED_IAM \
   --region $AWS_REGION
 

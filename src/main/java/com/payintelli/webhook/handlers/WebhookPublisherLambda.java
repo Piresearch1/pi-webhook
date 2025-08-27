@@ -1,76 +1,91 @@
 package com.payintelli.webhook.handlers;
 
 import java.util.List;
-import java.util.Map;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import com.amazonaws.services.lambda.runtime.events.SQSEvent;
 import com.amazonaws.services.sqs.AmazonSQS;
 import com.amazonaws.services.sqs.AmazonSQSClientBuilder;
 import com.amazonaws.services.sqs.model.SendMessageRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.payintelli.webhook.models.WebhookDelivery;
+import com.payintelli.webhook.models.WebhookDeliveryMessage;
 import com.payintelli.webhook.models.WebhookEndpoint;
-import com.payintelli.webhook.models.WebhookMessage;
+import com.payintelli.webhook.models.WebhookPublisherMessage;
 import com.payintelli.webhook.services.WebhookDatabaseService;
 
-public class WebhookPublisherLambda implements RequestHandler<Map<String, Object>, String> {
+public class WebhookPublisherLambda implements RequestHandler<SQSEvent, String> {
 
-    private final AmazonSQS sqs = AmazonSQSClientBuilder.defaultClient();
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final WebhookDatabaseService dbService;
-    private final String queueUrl;
+	private final AmazonSQS sqs = AmazonSQSClientBuilder.defaultClient();
+	private final ObjectMapper readObjectMapper;
+	private final ObjectMapper writeObjectMapper = new ObjectMapper();
+	private final WebhookDatabaseService dbService;
+	private final String queueUrl;
 
-    public WebhookPublisherLambda() {
-        this.dbService = new WebhookDatabaseService(
-                System.getenv("DATABASE_URL"),
-                System.getenv("DATABASE_USERNAME"),
-                System.getenv("DATABASE_PASSWORD"));
-        this.queueUrl = System.getenv("SQS_QUEUE_URL");
-    }
+	public WebhookPublisherLambda() {
+		this.dbService = new WebhookDatabaseService(System.getenv("DATABASE_URL"), System.getenv("DATABASE_USERNAME"),
+				System.getenv("DATABASE_PASSWORD"));
+		this.queueUrl = System.getenv("SQS_QUEUE_URL");
 
-    @Override
-    public String handleRequest(Map<String, Object> event, Context context) {
-        try {
-            String eventType = (String) event.get("eventType");
-            String clientId = (String) event.get("clientId");
-            Object eventData = event.get("data");
-            String payload = objectMapper.writeValueAsString(eventData);
+		readObjectMapper = new ObjectMapper();
+		readObjectMapper.registerModule(new JavaTimeModule());
+		readObjectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+	}
 
-            context.getLogger().log("Processing webhook event: " + eventType);
+	@Override
+	public String handleRequest(SQSEvent event, Context context) {
+		for (SQSEvent.SQSMessage message : event.getRecords()) {
+			try {
+				processWebhookMessage(message, context);
+			} catch (Exception e) {
+				context.getLogger().log("Error processing message: " + e.getMessage());
+			}
+		}
+		return "Processed " + event.getRecords().size() + " messages";
+	}
 
-            List<WebhookEndpoint> endpoints = dbService.findActiveEndpointsByEvent(clientId, eventType);
-            context.getLogger().log("Found " + endpoints.size() + " endpoints for event: " + eventType);
+	public String processWebhookMessage(SQSEvent.SQSMessage sqsMessage, Context context) {
+		try {
+			WebhookPublisherMessage event = readObjectMapper.readValue(sqsMessage.getBody(),
+					WebhookPublisherMessage.class);
+			context.getLogger().log("Processing webhook event: " + event);
 
-            for (WebhookEndpoint endpoint : endpoints) {
-                WebhookDelivery delivery = new WebhookDelivery();
-                delivery.setWebhookEndpointId(endpoint.getId());
-                delivery.setEventType(eventType);
-                delivery.setPayload(payload);
-                delivery.setAttemptCount(1);
-                delivery.setStatus("PENDING");
+			List<WebhookEndpoint> endpoints = dbService.findActiveEndpointsByEvent(event.getClientId(),
+					event.getEventType());
+			context.getLogger().log("Found " + endpoints.size() + " endpoints for event: " + event.getEventType());
 
-                Long deliveryId = dbService.createWebhookDelivery(delivery);
+			for (WebhookEndpoint endpoint : endpoints) {
+				WebhookDelivery delivery = new WebhookDelivery();
+				delivery.setWebhookEndpointId(endpoint.getId());
+				delivery.setEventType(event.getEventType());
+				delivery.setPayload(event.getData().toString());
+				delivery.setAttemptCount(1);
+				delivery.setStatus("PENDING");
 
-                dbService.insertWebhookDeliveryLog(deliveryId, 1, payload);
+				Long deliveryId = dbService.createWebhookDelivery(delivery);
 
-                WebhookMessage message = new WebhookMessage(deliveryId, endpoint.getId(), eventType, payload, 1);
-                String messageBody = objectMapper.writeValueAsString(message);
+				dbService.insertWebhookDeliveryLog(deliveryId, 1, delivery.getPayload());
 
-                SendMessageRequest sendMessageRequest = new SendMessageRequest()
-                        .withQueueUrl(queueUrl)
-                        .withMessageBody(messageBody);
+				WebhookDeliveryMessage message = new WebhookDeliveryMessage(deliveryId, endpoint.getId(),
+						event.getEventType(), event.getData().toString(), 1);
+				String messageBody = writeObjectMapper.writeValueAsString(message);
 
-                sqs.sendMessage(sendMessageRequest);
+				SendMessageRequest sendMessageRequest = new SendMessageRequest().withQueueUrl(queueUrl)
+						.withMessageBody(messageBody);
 
-                context.getLogger().log("Queued delivery " + deliveryId + " for endpoint " + endpoint.getId());
-            }
+				sqs.sendMessage(sendMessageRequest);
 
-            return "Published " + endpoints.size() + " webhook deliveries for event: " + eventType;
+				context.getLogger().log("Queued delivery " + deliveryId + " for endpoint " + endpoint.getId());
+			}
 
-        } catch (Exception e) {
-            context.getLogger().log("Error processing webhook event: " + e.getMessage());
-            throw new RuntimeException(e);
-        }
-    }
+			return "Published " + endpoints.size() + " webhook deliveries for event: " + event.getEventType();
+
+		} catch (Exception e) {
+			context.getLogger().log("Error processing webhook event: " + e.getMessage());
+			throw new RuntimeException(e);
+		}
+	}
 }
