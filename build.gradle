@@ -19,6 +19,7 @@ dependencies {
     // AWS SDK
     implementation 'com.amazonaws:aws-java-sdk-sqs:1.12.565'
     implementation 'com.amazonaws:aws-java-sdk-rds:1.12.565'
+    implementation("software.amazon.awssdk:scheduler:2.25.47")
     
     // Jackson for JSON
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'

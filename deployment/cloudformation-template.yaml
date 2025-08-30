@@ -35,6 +35,11 @@ Parameters:
     Description: 'Version identifier for Lambda artifacts (e.g., timestamp or git hash)'
 
 Resources:
+  WebhookScheduleGroup:
+     Type: AWS::Scheduler::ScheduleGroup
+     Properties:
+      Name: !Sub "pi-checkout-${Environment}-schgrp-${AWS::Region}-webhook"
+
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -43,6 +48,27 @@ Resources:
      SecurityGroupEgress:
       - IpProtocol: -1
         CidrIp: 0.0.0.0/0
+
+  EventBridgeSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "pi-checkout-${Environment}-role-${AWS::Region}-eventbridge-scheduler"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowSQSSendMessage
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource:
+                  - !GetAtt DeliveryWebhookQueue.Arn
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -72,6 +98,18 @@ Resources:
                 Resource:
                  - !GetAtt PublishWebhookQueue.Arn
                  - !GetAtt DeliveryWebhookQueue.Arn
+        - PolicyName: LambdaSchedulerPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - scheduler:CreateSchedule
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt EventBridgeSchedulerRole.Arn
 
   # Dead Letter Queue
   PublishWebhookDLQ:
@@ -120,10 +158,6 @@ Resources:
       MemorySize: 512
       Timeout: 60
       Role: !GetAtt LambdaExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds: !Ref SubnetIds
       Environment: 
         Variables:
           DATABASE_URL: !Ref DatabaseUrl
@@ -146,16 +180,16 @@ Resources:
       MemorySize: 1024
       Timeout: 120
       Role: !GetAtt LambdaExecutionRole.Arn
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref LambdaSecurityGroup
-        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           DATABASE_URL: !Ref DatabaseUrl
           DATABASE_USERNAME: !Ref DatabaseUsername
           DATABASE_PASSWORD: !Ref DatabasePassword
           SQS_QUEUE_URL: !Ref DeliveryWebhookQueue
+          SQS_QUEUE_ARN: !GetAtt DeliveryWebhookQueue.Arn
+          EVENTBRIDGE_ROLE_ARN: !GetAtt EventBridgeSchedulerRole.Arn
+          SCHEDULE_ROLE_FORMAT: !Sub 'pi-checkout-${Environment}-sch-${AWS::Region}-%s-attempt-%s'
+          SCHEDULE_ROLE_GROUP: !Ref WebhookScheduleGroup
           MAX_ATTEMPTS: '5'
       SnapStart:
         ApplyOn: PublishedVersions
