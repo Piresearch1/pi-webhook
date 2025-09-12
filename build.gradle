@@ -15,34 +15,40 @@ dependencies {
     // AWS Lambda
     implementation 'com.amazonaws:aws-lambda-java-core:1.2.3'
     implementation 'com.amazonaws:aws-lambda-java-events:3.11.3'
-    
-    // AWS SDK
+
+    // AWS SDK v1 (existing)
     implementation 'com.amazonaws:aws-java-sdk-sqs:1.12.565'
     implementation 'com.amazonaws:aws-java-sdk-rds:1.12.565'
-    implementation("software.amazon.awssdk:scheduler:2.25.47")
-    
+
+    // AWS SDK v2
+    implementation platform("software.amazon.awssdk:bom:2.26.0")
+    implementation "software.amazon.awssdk:dynamodb"
+    implementation "software.amazon.awssdk:sqs"
+    implementation "software.amazon.awssdk:scheduler:2.25.47"
+
     // Jackson for JSON
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
     implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.15.2"
     implementation 'com.fasterxml.jackson.core:jackson-core:2.15.2'
     implementation 'com.fasterxml.jackson.core:jackson-annotations:2.15.2'
-    
+
     // Database
     implementation 'org.postgresql:postgresql:42.6.0'
     implementation 'com.zaxxer:HikariCP:5.0.1'
-    
+
     // Logging
     implementation 'org.slf4j:slf4j-api:2.0.7'
     implementation 'org.slf4j:slf4j-simple:2.0.7'
-    
+
     // Utilities
     implementation 'org.apache.commons:commons-lang3:3.12.0'
     implementation 'commons-codec:commons-codec:1.16.0'
-    
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.mockito:mockito-core:5.4.0'
 }
+
 
 // Default Shadow JAR (not strictly needed for Lambda, but kept)
 shadowJar {

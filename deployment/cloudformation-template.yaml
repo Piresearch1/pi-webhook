@@ -110,6 +110,16 @@ Resources:
                 Action:
                   - iam:PassRole
                 Resource: !GetAtt EventBridgeSchedulerRole.Arn
+        - PolicyName: LambdaDynamoDBPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/pi-shared-${Environment}-dyb-${AWS::Region}-configs"
 
   # Dead Letter Queue
   PublishWebhookDLQ:
@@ -164,6 +174,7 @@ Resources:
           DATABASE_USERNAME: !Ref DatabaseUsername
           DATABASE_PASSWORD: !Ref DatabasePassword
           SQS_QUEUE_URL: !Ref DeliveryWebhookQueue
+          DYNAMODB_TABLE_NAME: !Sub "pi-shared-${Environment}-dyb-${AWS::Region}-configs"
       SnapStart:
         ApplyOn: PublishedVersions
 
@@ -190,6 +201,7 @@ Resources:
           EVENTBRIDGE_ROLE_ARN: !GetAtt EventBridgeSchedulerRole.Arn
           SCHEDULE_ROLE_FORMAT: !Sub 'pi-checkout-${Environment}-sch-${AWS::Region}-%s-attempt-%s'
           SCHEDULE_ROLE_GROUP: !Ref WebhookScheduleGroup
+          DYNAMODB_TABLE_NAME: !Sub "pi-shared-${Environment}-dyb-${AWS::Region}-configs"
           MAX_ATTEMPTS: '5'
       SnapStart:
         ApplyOn: PublishedVersions

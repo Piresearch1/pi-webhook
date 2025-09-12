@@ -11,31 +11,29 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 public class WebhookHttpService {
-    private final HttpClient httpClient;
-    
-    public WebhookHttpService() {
-        this.httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
+  private final HttpClient httpClient;
+
+  public WebhookHttpService() {
+    this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+  }
+
+  public HttpResponse<String> sendWebhook(WebhookEndpoint endpoint, WebhookDeliveryMessage message)
+      throws Exception {
+    HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(URI.create(endpoint.getUrl()))
+        .timeout(Duration.ofSeconds(30)).header("Content-Type", "application/json")
+        .header("User-Agent", "Payintelli Webhook-Delivery/1.0")
+        .header("X-Webhook-Event", message.getEventType())
+        .header("X-Webhook-Attempt", String.valueOf(message.getAttemptCount()))
+        .POST(HttpRequest.BodyPublishers.ofString(message.getPayload()));
+
+    // Add signature header if secret is configured
+    if (endpoint.getSecret() != null && !endpoint.getSecret().isEmpty()) {
+      String signature =
+          WebhookSignatureUtils.generateSignature(message.getPayload(), endpoint.getSecret());
+      requestBuilder.header("X-Webhook-Signature", "sha256=" + signature);
     }
-    
-    public HttpResponse<String> sendWebhook(WebhookEndpoint endpoint, WebhookDeliveryMessage message) throws Exception {
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(endpoint.getUrl()))
-            .timeout(Duration.ofSeconds(30))
-            .header("Content-Type", "application/json")
-            .header("User-Agent", "Payintelli Webhook-Delivery/1.0")
-            .header("X-Webhook-Event", message.getEventType())
-            .header("X-Webhook-Attempt", String.valueOf(message.getAttemptCount()))
-            .POST(HttpRequest.BodyPublishers.ofString(message.getPayload()));
-        
-        // Add signature header if secret is configured
-        if (endpoint.getSecret() != null && !endpoint.getSecret().isEmpty()) {
-            String signature = WebhookSignatureUtils.generateSignature(message.getPayload(), endpoint.getSecret());
-            requestBuilder.header("X-Webhook-Signature", "sha256=" + signature);
-        }
-        
-        HttpRequest request = requestBuilder.build();
-        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-    }
+
+    HttpRequest request = requestBuilder.build();
+    return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+  }
 }
